@@ -13,7 +13,8 @@ import (
 )
 
 var (
-	awairAddress = flag.String("awair-address", "", "Base URL of Awair local API server")
+	awairAddress  = flag.String("awair-address", "", "Base URL of Awair local API server")
+	listenAddress = flag.String("listen-address", ":8080", "Address to serve metrics on")
 )
 
 // The next few bits are more or less copied from
@@ -134,5 +135,5 @@ func main() {
 		log.Fatalf("Failed to register Prometheus collector: %v", err)
 	}
 	http.Handle("/air-data", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
-	http.ListenAndServe(":8080", nil)
+	http.ListenAndServe(*listenAddress, nil)
 }
