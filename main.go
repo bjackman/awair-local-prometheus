@@ -124,11 +124,15 @@ func main() {
 		log.Fatalf("--awair-address must be provided (%q)", *awairAddress)
 	}
 
-	err := prometheus.Register(&Collector{awairBaseURL: *awairAddress})
+	// Add handler for metrics about this service.
+	http.Handle("/metrics", promhttp.Handler())
+
+	// Add handler for the actual air data metrics.
+	reg := prometheus.NewPedanticRegistry()
+	err := reg.Register(&Collector{awairBaseURL: *awairAddress})
 	if err != nil {
 		log.Fatalf("Failed to register Prometheus collector: %v", err)
 	}
-
-	http.Handle("/metrics", promhttp.Handler())
+	http.Handle("/air-data", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	http.ListenAndServe(":8080", nil)
 }
