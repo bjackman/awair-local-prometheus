@@ -51,7 +51,8 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 			log.Printf("NewConstMetric: %v", err)
 			return
 		}
-		ch <- m
+
+		ch <- prometheus.NewMetricWithTimestamp(data.Timestamp, m)
 	}
 }
 
