@@ -19,10 +19,6 @@ var (
 // The next few bits are more or less copied from
 // https://godoc.org/github.com/prometheus/client_golang/prometheus#example-Collector
 
-var (
-	awairScoreDesc = prometheus.NewDesc("awair_score", "Awair's 'Score' metric", nil, nil)
-)
-
 type Collector struct {
 	awairBaseURL string
 }
@@ -43,32 +39,27 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 		return
 	}
 
-	m, err := prometheus.NewConstMetric(awairScoreDesc, prometheus.GaugeValue, float64(data.Score))
-	if err != nil {
-		// TODO: Count these errors. We need metrics for our metrics.
-		log.Printf("NewConstMetric: %v", err)
-		return
+	for name, val := range data.Metrics {
+		desc := prometheus.NewDesc(name, "", nil, nil)
+		m, err := prometheus.NewConstMetric(desc, prometheus.GaugeValue, val)
+		if err != nil {
+			// TODO: Count these errors. We need metrics for our metrics.
+			log.Printf("NewConstMetric: %v", err)
+			return
+		}
+		ch <- m
 	}
-	ch <- m
 }
 
-// AwairAirDataResponse is the structure we expect from the /air/data-latest
-// endpoints of the Awair local API.
+// AwairAirDataResponse represents the air data returned by the Local API.
 type AirDataResponse struct {
-	Timestamp     time.Time `json:"timestamp" `
-	Score         int64     `json:"score"`
-	DewPoint      float64   `json:"dew_point"`
-	Temp          float64   `json:"temp"`
-	Humid         float64   `json:"humid"`
-	AbsHumid      float64   `json:"abs_humid"`
-	Co2           int64     `json:"co2"`
-	Co2Est        int64     `json:"co2_est"`
-	Voc           int64     `json:"voc"`
-	VocBaseline   int64     `json:"voc_baseline"`
-	VocH2Raw      int64     `json:"voc_h2_raw"`
-	VocEthanolRaw int64     `json:"voc_ethanol_raw"`
-	Pm25          int64     `json:"pm25"`
-	Pm10Est       int64     `json:"pm10_est"`
+	// Timestamp reported by the Awair device
+	Timestamp time.Time
+	// Metrics reported by the device. The ones I get on mine are:
+	// "score", "dew_point", "temp", "humid", "abs_humid", "co2", "co2_est",
+	// "voc", "voc_baseline", "voc_h2_raw", "voc_ethanol_raw", "pm25", and
+	// "pm10_est"
+	Metrics map[string]float64
 }
 
 func Get(baseURL string) (*AirDataResponse, error) {
@@ -85,10 +76,35 @@ func Get(baseURL string) (*AirDataResponse, error) {
 		return nil, fmt.Errorf("Awair returned an error: %v", http.StatusText(resp.StatusCode))
 	}
 
-	data := AirDataResponse{}
-	err = json.NewDecoder(resp.Body).Decode(&data)
+	var fields map[string]interface{}
+	err = json.NewDecoder(resp.Body).Decode(&fields)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode JSON: %v", err)
+		return nil, fmt.Errorf("failed to JSON: %v", err)
+	}
+
+	data := AirDataResponse{Metrics: make(map[string]float64)}
+
+	// Parse the timestamp field from the JSON
+	ts, ok := fields["timestamp"]
+	if !ok {
+		return nil, fmt.Errorf("no 'timestamp' field")
+	}
+	tsString, ok := ts.(string)
+	if !ok {
+		return nil, fmt.Errorf("'timestamp' field %v not a string", ts)
+	}
+	if data.Timestamp, err = time.Parse(time.RFC3339, tsString); err != nil {
+		return nil, fmt.Errorf("failed ot parse timestamp: %v", err)
+	}
+	delete(fields, "timestamp")
+	// Now go through the other fields, they should all be float64s.
+	for key, val := range fields {
+		floatVal, ok := val.(float64)
+		if !ok {
+			log.Printf("Got non-float64 value %q (%v) in Awair response", key, val)
+			continue
+		}
+		data.Metrics[key] = floatVal
 	}
 
 	return &data, nil
