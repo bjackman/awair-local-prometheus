@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -71,10 +72,23 @@ type AirDataResponse struct {
 	Metrics map[string]float64
 }
 
+// This metric instrements this service itself.
+var awairGetCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "awair_gets",
+	Help: "Calls to the Get function, reading from the Awair local API",
+}, []string{"result"})
+
+// var awairGetCounter = promauto.NewCounter(prometheus.CounterOpts{
+// 	Name: "awair_gets",
+// 	Help: "Calls to the Get function, reading from the Awair local API",
+// })
+
 func Get(baseURL string) (*AirDataResponse, error) {
 	url := baseURL + "/air-data/latest"
 	resp, err := http.Get(url)
 	if err != nil {
+		// awairGetCounter.Inc()
+		awairGetCounter.With(prometheus.Labels{"result": "failed-get"}).Inc()
 		return nil, fmt.Errorf("failed to GET from Awair at %q: %v", url, err)
 	}
 	defer resp.Body.Close()
@@ -82,12 +96,14 @@ func Get(baseURL string) (*AirDataResponse, error) {
 	fmt.Println("Response status:", resp.Status)
 
 	if resp.StatusCode > 200 || resp.StatusCode > 299 {
+		awairGetCounter.With(prometheus.Labels{"result": "failed-get"}).Inc()
 		return nil, fmt.Errorf("Awair returned an error: %v", http.StatusText(resp.StatusCode))
 	}
 
 	var fields map[string]interface{}
 	err = json.NewDecoder(resp.Body).Decode(&fields)
 	if err != nil {
+		awairGetCounter.With(prometheus.Labels{"result": "failed-decode"}).Inc()
 		return nil, fmt.Errorf("failed to JSON: %v", err)
 	}
 
@@ -96,6 +112,7 @@ func Get(baseURL string) (*AirDataResponse, error) {
 	// Parse the timestamp field from the JSON
 	ts, ok := fields["timestamp"]
 	if !ok {
+		awairGetCounter.With(prometheus.Labels{"result": "failed-decode"}).Inc()
 		return nil, fmt.Errorf("no 'timestamp' field")
 	}
 	tsString, ok := ts.(string)
@@ -103,6 +120,7 @@ func Get(baseURL string) (*AirDataResponse, error) {
 		return nil, fmt.Errorf("'timestamp' field %v not a string", ts)
 	}
 	if data.Timestamp, err = time.Parse(time.RFC3339, tsString); err != nil {
+		awairGetCounter.With(prometheus.Labels{"result": "failed-decode"}).Inc()
 		return nil, fmt.Errorf("failed ot parse timestamp: %v", err)
 	}
 	delete(fields, "timestamp")
@@ -116,6 +134,7 @@ func Get(baseURL string) (*AirDataResponse, error) {
 		data.Metrics[key] = floatVal
 	}
 
+	awairGetCounter.With(prometheus.Labels{"result": "success"}).Inc()
 	return &data, nil
 }
 
