@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var (
@@ -38,6 +40,8 @@ func main() {
 		log.Fatalf("--awair-address must be provided (%q)", *awairAddress)
 	}
 
+	http.Handle("/metrics", promhttp.Handler())
+
 	url := *awairAddress + "/air-data/latest"
 	resp, err := http.Get(url)
 	if err != nil {
@@ -53,4 +57,6 @@ func main() {
 		log.Fatalf("Failed to decode JSON: %v", err)
 	}
 	log.Printf("%+v", data)
+
+	http.ListenAndServe(":8080", nil)
 }
