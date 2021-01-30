@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -81,6 +82,10 @@ var awairGetCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 
 // GetAirData reads data from the AwairLocal API, parses it and returns it.
 func GetAirData(baseURL string) (*AirData, error) {
+	// My Awair device doesn't handle duplicate slashes at the beginning of
+	// the query path, ensure we don't run into that issue.
+	baseURL = strings.TrimRight(baseURL, "/")
+
 	url := baseURL + "/air-data/latest"
 	resp, err := http.Get(url)
 	if err != nil {
