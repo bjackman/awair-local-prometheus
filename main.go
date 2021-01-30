@@ -36,7 +36,7 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (c *Collector) Collect(ch chan<- prometheus.Metric) {
-	data, err := Get(c.awairBaseURL)
+	data, err := GetAirData(c.awairBaseURL)
 	if err != nil {
 		// TODO: Count these errors. We need metrics for our metrics.
 		log.Printf("Error getting data from Awair: %v", err)
@@ -64,7 +64,7 @@ var ExpectedMetrics = []string{
 }
 
 // AwairAirDataResponse represents the air data returned by the Local API.
-type AirDataResponse struct {
+type AirData struct {
 	// Timestamp reported by the Awair device
 	Timestamp time.Time
 	// Metrics reported by the device. See ExpectedMetrics for the fields I
@@ -78,12 +78,8 @@ var awairGetCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 	Help: "Calls to the Get function, reading from the Awair local API",
 }, []string{"result"})
 
-// var awairGetCounter = promauto.NewCounter(prometheus.CounterOpts{
-// 	Name: "awair_gets",
-// 	Help: "Calls to the Get function, reading from the Awair local API",
-// })
-
-func Get(baseURL string) (*AirDataResponse, error) {
+// GetAirData reads data from the AwairLocal API, parses it and returns it.
+func GetAirData(baseURL string) (*AirData, error) {
 	url := baseURL + "/air-data/latest"
 	resp, err := http.Get(url)
 	if err != nil {
@@ -92,8 +88,6 @@ func Get(baseURL string) (*AirDataResponse, error) {
 		return nil, fmt.Errorf("failed to GET from Awair at %q: %v", url, err)
 	}
 	defer resp.Body.Close()
-
-	fmt.Println("Response status:", resp.Status)
 
 	if resp.StatusCode > 200 || resp.StatusCode > 299 {
 		awairGetCounter.With(prometheus.Labels{"result": "failed-get"}).Inc()
@@ -107,7 +101,7 @@ func Get(baseURL string) (*AirDataResponse, error) {
 		return nil, fmt.Errorf("failed to JSON: %v", err)
 	}
 
-	data := AirDataResponse{Metrics: make(map[string]float64)}
+	data := AirData{Metrics: make(map[string]float64)}
 
 	// Parse the timestamp field from the JSON
 	ts, ok := fields["timestamp"]
