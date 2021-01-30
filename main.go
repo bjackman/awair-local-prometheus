@@ -28,7 +28,9 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	// metrics. If it does fail at inopportune times, we violate the
 	// contract of the Collector interface and things will presumably get
 	// messed up in confusing ways.
-	prometheus.DescribeByCollect(c, ch)
+	for _, name := range ExpectedMetrics {
+		ch <- prometheus.NewDesc(name, "", nil, nil)
+	}
 }
 
 func (c *Collector) Collect(ch chan<- prometheus.Metric) {
@@ -51,14 +53,20 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	}
 }
 
+// ExpectedMetrics is the list of fields (excluding "timestamp") I expect the
+// Awair Local API to return.
+var ExpectedMetrics = []string{
+	"score", "dew_point", "temp", "humid", "abs_humid", "co2", "co2_est",
+	"voc", "voc_baseline", "voc_h2_raw", "voc_ethanol_raw", "pm25",
+	"pm10_est",
+}
+
 // AwairAirDataResponse represents the air data returned by the Local API.
 type AirDataResponse struct {
 	// Timestamp reported by the Awair device
 	Timestamp time.Time
-	// Metrics reported by the device. The ones I get on mine are:
-	// "score", "dew_point", "temp", "humid", "abs_humid", "co2", "co2_est",
-	// "voc", "voc_baseline", "voc_h2_raw", "voc_ethanol_raw", "pm25", and
-	// "pm10_est"
+	// Metrics reported by the device. See ExpectedMetrics for the fields I
+	// get from my device.
 	Metrics map[string]float64
 }
 
