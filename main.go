@@ -49,7 +49,7 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 		if err != nil {
 			// TODO: Count these errors. We need metrics for our metrics.
 			log.Printf("NewConstMetric: %v", err)
-			return
+			continue
 		}
 
 		ch <- prometheus.NewMetricWithTimestamp(data.Timestamp, m)
