@@ -19,6 +19,8 @@ var (
 	listenAddress = flag.String("listen-address", ":8080", "Address to serve metrics on")
 )
 
+var prometheusNamespace = "awairlocal"
+
 // The next few bits are more or less copied from
 // https://godoc.org/github.com/prometheus/client_golang/prometheus#example-Collector
 
@@ -32,7 +34,7 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	// contract of the Collector interface and things will presumably get
 	// messed up in confusing ways.
 	for _, name := range ExpectedMetrics {
-		ch <- prometheus.NewDesc(name, "", nil, nil)
+		ch <- c.desc(name)
 	}
 }
 
@@ -45,8 +47,7 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	for name, val := range data.Metrics {
-		desc := prometheus.NewDesc(name, "", nil, nil)
-		m, err := prometheus.NewConstMetric(desc, prometheus.GaugeValue, val)
+		m, err := prometheus.NewConstMetric(c.desc(name), prometheus.GaugeValue, val)
 		if err != nil {
 			// TODO: Count these errors. We need metrics for our metrics.
 			log.Printf("NewConstMetric: %v", err)
@@ -55,6 +56,10 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 
 		ch <- prometheus.NewMetricWithTimestamp(data.Timestamp, m)
 	}
+}
+
+func (c *Collector) desc(name string) *prometheus.Desc {
+	return prometheus.NewDesc(fmt.Sprintf("%s_%s", prometheusNamespace, name), "", nil, nil)
 }
 
 // ExpectedMetrics is the list of fields (excluding "timestamp") I expect the
@@ -75,9 +80,11 @@ type AirData struct {
 }
 
 // This metric instrements this service itself.
-var awairGetCounter = promauto.NewCounterVec(prometheus.CounterOpts{
-	Name: "awair_gets",
-	Help: "Calls to the Get function, reading from the Awair local API",
+var getAirDataCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+	Namespace: prometheusNamespace,
+	Subsystem: "ops",
+	Name:      "GetAirData_calls",
+	Help:      "Calls to the Get function, reading from the Awair local API",
 }, []string{"result"})
 
 // GetAirData reads data from the AwairLocal API, parses it and returns it.
@@ -89,21 +96,21 @@ func GetAirData(baseURL string) (*AirData, error) {
 	url := baseURL + "/air-data/latest"
 	resp, err := http.Get(url)
 	if err != nil {
-		// awairGetCounter.Inc()
-		awairGetCounter.With(prometheus.Labels{"result": "failed-get"}).Inc()
+		// getAirDataCounter.Inc()
+		getAirDataCounter.With(prometheus.Labels{"result": "failed-get"}).Inc()
 		return nil, fmt.Errorf("failed to GET from Awair at %q: %v", url, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode > 200 || resp.StatusCode > 299 {
-		awairGetCounter.With(prometheus.Labels{"result": "failed-get"}).Inc()
+		getAirDataCounter.With(prometheus.Labels{"result": "failed-get"}).Inc()
 		return nil, fmt.Errorf("Awair returned an error: %v", http.StatusText(resp.StatusCode))
 	}
 
 	var fields map[string]interface{}
 	err = json.NewDecoder(resp.Body).Decode(&fields)
 	if err != nil {
-		awairGetCounter.With(prometheus.Labels{"result": "failed-decode"}).Inc()
+		getAirDataCounter.With(prometheus.Labels{"result": "failed-decode"}).Inc()
 		return nil, fmt.Errorf("failed to JSON: %v", err)
 	}
 
@@ -112,7 +119,7 @@ func GetAirData(baseURL string) (*AirData, error) {
 	// Parse the timestamp field from the JSON
 	ts, ok := fields["timestamp"]
 	if !ok {
-		awairGetCounter.With(prometheus.Labels{"result": "failed-decode"}).Inc()
+		getAirDataCounter.With(prometheus.Labels{"result": "failed-decode"}).Inc()
 		return nil, fmt.Errorf("no 'timestamp' field")
 	}
 	tsString, ok := ts.(string)
@@ -120,7 +127,7 @@ func GetAirData(baseURL string) (*AirData, error) {
 		return nil, fmt.Errorf("'timestamp' field %v not a string", ts)
 	}
 	if data.Timestamp, err = time.Parse(time.RFC3339, tsString); err != nil {
-		awairGetCounter.With(prometheus.Labels{"result": "failed-decode"}).Inc()
+		getAirDataCounter.With(prometheus.Labels{"result": "failed-decode"}).Inc()
 		return nil, fmt.Errorf("failed ot parse timestamp: %v", err)
 	}
 	delete(fields, "timestamp")
@@ -134,7 +141,7 @@ func GetAirData(baseURL string) (*AirData, error) {
 		data.Metrics[key] = floatVal
 	}
 
-	awairGetCounter.With(prometheus.Labels{"result": "success"}).Inc()
+	getAirDataCounter.With(prometheus.Labels{"result": "success"}).Inc()
 	return &data, nil
 }
 
