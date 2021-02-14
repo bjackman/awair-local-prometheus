@@ -96,7 +96,6 @@ func GetAirData(baseURL string) (*AirData, error) {
 	url := baseURL + "/air-data/latest"
 	resp, err := http.Get(url)
 	if err != nil {
-		// getAirDataCounter.Inc()
 		getAirDataCounter.With(prometheus.Labels{"result": "failed-get"}).Inc()
 		return nil, fmt.Errorf("failed to GET from Awair at %q: %v", url, err)
 	}
