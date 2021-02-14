@@ -26,15 +26,24 @@ var prometheusNamespace = "awairlocal"
 
 type Collector struct {
 	awairBaseURL string
+	descs map[string]*prometheus.Desc
+}
+
+func NewCollector(awairBaseURL string) *Collector {
+	c := Collector{
+		awairBaseURL: awairBaseURL,
+		descs: make(map[string]*prometheus.Desc),
+	}
+	for _, name := range ExpectedMetrics {
+		c.descs[name] = prometheus.NewDesc(
+			fmt.Sprintf("%s_%s", prometheusNamespace, name), "", nil, nil)
+	}
+	return &c
 }
 
 func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
-	// This bit is bad, it assumes that Collect will never fail to fetch
-	// metrics. If it does fail at inopportune times, we violate the
-	// contract of the Collector interface and things will presumably get
-	// messed up in confusing ways.
-	for _, name := range ExpectedMetrics {
-		ch <- c.desc(name)
+	for _, desc := range c.descs {
+		ch <- desc
 	}
 }
 
@@ -47,7 +56,12 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	}
 
 	for name, val := range data.Metrics {
-		m, err := prometheus.NewConstMetric(c.desc(name), prometheus.GaugeValue, val)
+		desc, ok := c.descs[name]
+		if !ok {
+			log.Printf("Ignoring unknown metric %q", name)
+			continue
+		}
+		m, err := prometheus.NewConstMetric(desc, prometheus.GaugeValue, val)
 		if err != nil {
 			// TODO: Count these errors. We need metrics for our metrics.
 			log.Printf("NewConstMetric: %v", err)
@@ -56,10 +70,6 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 
 		ch <- prometheus.NewMetricWithTimestamp(data.Timestamp, m)
 	}
-}
-
-func (c *Collector) desc(name string) *prometheus.Desc {
-	return prometheus.NewDesc(fmt.Sprintf("%s_%s", prometheusNamespace, name), "", nil, nil)
 }
 
 // ExpectedMetrics is the list of fields (excluding "timestamp") I expect the
@@ -155,7 +165,7 @@ func main() {
 
 	// Add handler for the actual air data metrics.
 	reg := prometheus.NewPedanticRegistry()
-	err := reg.Register(&Collector{awairBaseURL: *awairAddress})
+	err := reg.Register(NewCollector(*awairAddress))
 	if err != nil {
 		log.Fatalf("Failed to register Prometheus collector: %v", err)
 	}
