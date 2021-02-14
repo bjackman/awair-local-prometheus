@@ -66,8 +66,8 @@ func (c *Collector) desc(name string) *prometheus.Desc {
 // Awair Local API to return.
 var ExpectedMetrics = []string{
 	"score", "dew_point", "temp", "humid", "abs_humid", "co2", "co2_est",
-	"voc", "voc_baseline", "voc_h2_raw", "voc_ethanol_raw", "pm25",
-	"pm10_est",
+	"co2_est_baseline", "voc", "voc_baseline", "voc_h2_raw",
+	"voc_ethanol_raw", "pm25", "pm10_est",
 }
 
 // AwairAirDataResponse represents the air data returned by the Local API.
